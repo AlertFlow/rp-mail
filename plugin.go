@@ -1,46 +1,73 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
+	"net/smtp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AlertFlow/runner/pkg/executions"
 	"github.com/AlertFlow/runner/pkg/models"
 
 	"github.com/gin-gonic/gin"
-	probing "github.com/prometheus-community/pro-bing"
 	log "github.com/sirupsen/logrus"
 )
 
-type PingPlugin struct{}
+type EmailPlugin struct{}
 
-func (p *PingPlugin) Init() models.Plugin {
+func (p *EmailPlugin) Init() models.Plugin {
 	return models.Plugin{
-		Name:    "Ping",
+		Name:    "Email",
 		Type:    "action",
-		Version: "1.0.5",
+		Version: "1.0.0",
 		Creator: "JustNZ",
 	}
 }
 
-func (p *PingPlugin) Details() models.PluginDetails {
+func (p *EmailPlugin) Details() models.PluginDetails {
 	params := []models.Param{
 		{
-			Key:         "Target",
+			Key:         "From",
 			Type:        "text",
-			Default:     "www.alertflow.org",
+			Default:     "from@mail.com",
 			Required:    true,
-			Description: "The target to ping",
+			Description: "Sender email address",
 		},
 		{
-			Key:         "Count",
-			Type:        "number",
-			Default:     3,
+			Key:         "Password",
+			Type:        "password",
+			Default:     "***",
 			Required:    false,
-			Description: "Number of packets to send",
+			Description: "Sender email password",
+		},
+		{
+			Key:         "To",
+			Type:        "text",
+			Default:     "to@mail.com",
+			Required:    false,
+			Description: "Recipient email address. Multiple emails can be separated by comma",
+		},
+		{
+			Key:         "SmtpHost",
+			Type:        "text",
+			Default:     "smtp.mail.com",
+			Required:    true,
+			Description: "SMTP server host",
+		},
+		{
+			Key:         "SmtpPort",
+			Type:        "number",
+			Default:     587,
+			Required:    true,
+			Description: "SMTP server port",
+		},
+		{
+			Key:         "Message",
+			Type:        "textarea",
+			Default:     "Email message",
+			Required:    true,
+			Description: "Email message",
 		},
 	}
 
@@ -51,34 +78,51 @@ func (p *PingPlugin) Details() models.PluginDetails {
 
 	return models.PluginDetails{
 		Action: models.ActionDetails{
-			ID:          "ping",
-			Name:        "Ping",
-			Description: "Pings a target",
-			Icon:        "solar:wi-fi-router-minimalistic-broken",
-			Type:        "ping",
-			Category:    "Network",
+			ID:          "mail",
+			Name:        "Mail",
+			Description: "Sends an email",
+			Icon:        "solar:mailbox-linear",
+			Type:        "mail",
+			Category:    "Utility",
 			Function:    p.Execute,
 			Params:      json.RawMessage(paramsJSON),
 		},
 	}
 }
 
-func (p *PingPlugin) Execute(execution models.Execution, flow models.Flows, payload models.Payload, steps []models.ExecutionSteps, step models.ExecutionSteps, action models.Actions) (data map[string]interface{}, finished bool, canceled bool, no_pattern_match bool, failed bool) {
-	target := "www.alertflow.org"
-	count := 3
+func (p *EmailPlugin) Execute(execution models.Execution, flow models.Flows, payload models.Payload, steps []models.ExecutionSteps, step models.ExecutionSteps, action models.Actions) (data map[string]interface{}, finished bool, canceled bool, no_pattern_match bool, failed bool) {
+	from := ""
+	password := ""
+	to := []string{}
+	smtpHost := ""
+	smtpPort := 0
+	message := ""
+
 	for _, param := range action.Params {
-		if param.Key == "Target" {
-			target = param.Value
+		if param.Key == "From" {
+			from = param.Value
 		}
-		if param.Key == "Count" {
-			count, _ = strconv.Atoi(param.Value)
+		if param.Key == "Password" {
+			password = param.Value
+		}
+		if param.Key == "To" {
+			to = strings.Split(param.Value, ",")
+		}
+		if param.Key == "SmtpHost" {
+			smtpHost = param.Value
+		}
+		if param.Key == "SmtpPort" {
+			smtpPort, _ = strconv.Atoi(param.Value)
+		}
+		if param.Key == "Message" {
+			message = param.Value
 		}
 	}
 
 	err := executions.UpdateStep(execution.ID.String(), models.ExecutionSteps{
 		ID:             step.ID,
 		ActionID:       action.ID.String(),
-		ActionMessages: []string{`Pinging: ` + target},
+		ActionMessages: []string{`Authenticate on SMTP Server: ` + smtpHost + `:` + strconv.Itoa(smtpPort)},
 		Pending:        false,
 		StartedAt:      time.Now(),
 		Running:        true,
@@ -87,64 +131,32 @@ func (p *PingPlugin) Execute(execution models.Execution, flow models.Flows, payl
 		return nil, false, false, false, true
 	}
 
-	pinger, err := probing.NewPinger(target)
+	// Create authentication
+	auth := smtp.PlainAuth("", from, password, smtpHost+":"+strconv.Itoa(smtpPort))
+
+	// Send actual message
+	err = smtp.SendMail(smtpHost+":"+strconv.Itoa(smtpPort), auth, from, to, []byte(message))
 	if err != nil {
-		log.Error("Error creating pinger: ", err)
-		err = executions.UpdateStep(execution.ID.String(), models.ExecutionSteps{
+		err := executions.UpdateStep(execution.ID.String(), models.ExecutionSteps{
 			ID:             step.ID,
-			ActionMessages: []string{"Error creating pinger: " + err.Error()},
-			Running:        false,
-			Error:          true,
+			ActionID:       action.ID.String(),
+			ActionMessages: []string{`Failed to send email: ` + err.Error()},
+			Pending:        false,
 			Finished:       true,
 			FinishedAt:     time.Now(),
-		})
-		if err != nil {
-			return nil, false, false, false, true
-		}
-		return nil, false, false, false, true
-	}
-	pinger.Count = count
-	timeout := time.Duration(count) * time.Second
-	pinger.Timeout = timeout
-	err = pinger.Run()
-	if err != nil {
-		msg := ""
-		if errors.Is(err, context.DeadlineExceeded) {
-			msg = "Pinger timed out"
-			log.Error("Pinger timed out: ", err)
-		} else {
-			msg = "Error running pinger"
-			log.Error("Error running pinger: ", err)
-		}
-		err = executions.UpdateStep(execution.ID.String(), models.ExecutionSteps{
-			ID:             step.ID,
-			ActionMessages: []string{msg + ": " + err.Error()},
 			Running:        false,
 			Error:          true,
-			Finished:       true,
-			FinishedAt:     time.Now(),
 		})
-		if err != nil {
-			return nil, false, false, false, true
-		}
+		log.Fatal(err)
 		return nil, false, false, false, true
 	}
 
-	stats := pinger.Statistics() // get send/receive/duplicate/rtt stats
 	err = executions.UpdateStep(execution.ID.String(), models.ExecutionSteps{
-		ID: step.ID,
-		ActionMessages: []string{
-			"Sent: " + strconv.Itoa(stats.PacketsSent),
-			"Received: " + strconv.Itoa(stats.PacketsRecv),
-			"Lost: " + strconv.Itoa(int(stats.PacketLoss)),
-			"RTT min: " + stats.MinRtt.String(),
-			"RTT max: " + stats.MaxRtt.String(),
-			"RTT avg: " + stats.AvgRtt.String(),
-			"Ping finished",
-		},
-		Running:    false,
-		Finished:   true,
-		FinishedAt: time.Now(),
+		ID:             step.ID,
+		ActionMessages: []string{`Email sent to ` + strings.Join(to, ", ")},
+		Running:        false,
+		Finished:       true,
+		FinishedAt:     time.Now(),
 	})
 	if err != nil {
 		return nil, false, false, false, true
@@ -153,6 +165,6 @@ func (p *PingPlugin) Execute(execution models.Execution, flow models.Flows, payl
 	return nil, true, false, false, false
 }
 
-func (p *PingPlugin) Handle(context *gin.Context) {}
+func (p *EmailPlugin) Handle(context *gin.Context) {}
 
-var Plugin PingPlugin
+var Plugin EmailPlugin
