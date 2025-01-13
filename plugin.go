@@ -20,7 +20,7 @@ func (p *EmailPlugin) Init() models.Plugin {
 	return models.Plugin{
 		Name:    "Email",
 		Type:    "action",
-		Version: "1.0.0",
+		Version: "1.0.1",
 		Creator: "JustNZ",
 	}
 }
@@ -147,7 +147,7 @@ func (p *EmailPlugin) Execute(execution models.Execution, flow models.Flows, pay
 			Running:        false,
 			Error:          true,
 		})
-		log.Fatal(err)
+		log.Error(err.Error())
 		return nil, false, false, false, true
 	}
 
@@ -159,6 +159,7 @@ func (p *EmailPlugin) Execute(execution models.Execution, flow models.Flows, pay
 		FinishedAt:     time.Now(),
 	})
 	if err != nil {
+		log.Error(err.Error())
 		return nil, false, false, false, true
 	}
 
