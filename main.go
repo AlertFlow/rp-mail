@@ -115,7 +115,7 @@ func (p *Plugin) Info() (models.Plugins, error) {
 		Actions: models.Actions{
 			Name:        "Mail",
 			Description: "Send an email",
-			Plugin:      "log",
+			Plugin:      "mail",
 			Icon:        "solar:mailbox-linear",
 			Category:    "Utility",
 			Params: []models.Params{
