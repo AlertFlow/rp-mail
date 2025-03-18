@@ -11,7 +11,7 @@ import (
 	"github.com/v1Flows/runner/pkg/executions"
 	"github.com/v1Flows/runner/pkg/plugins"
 
-	"github.com/v1Flows/alertFlow/services/backend/pkg/models"
+	"github.com/v1Flows/shared-library/pkg/models"
 
 	"github.com/hashicorp/go-plugin"
 )
@@ -49,11 +49,16 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 	}
 
 	err := executions.UpdateStep(request.Config, request.Execution.ID.String(), models.ExecutionSteps{
-		ID:        request.Step.ID,
-		Messages:  []string{`Authenticate on SMTP Server: ` + smtpHost + `:` + strconv.Itoa(smtpPort)},
+		ID: request.Step.ID,
+		Messages: []models.Message{
+			{
+				Title: "Mail",
+				Lines: []string{`Authenticate on SMTP Server: ` + smtpHost + `:` + strconv.Itoa(smtpPort)},
+			},
+		},
 		StartedAt: time.Now(),
 		Status:    "running",
-	})
+	}, request.Platform)
 	if err != nil {
 		return plugins.Response{
 			Success: false,
@@ -67,11 +72,16 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 	err = smtp.SendMail(smtpHost+":"+strconv.Itoa(smtpPort), auth, from, to, []byte(message))
 	if err != nil {
 		err := executions.UpdateStep(request.Config, request.Execution.ID.String(), models.ExecutionSteps{
-			ID:         request.Step.ID,
-			Messages:   []string{`Failed to send email: ` + err.Error()},
+			ID: request.Step.ID,
+			Messages: []models.Message{
+				{
+					Title: "Mail",
+					Lines: []string{"Failed to send email", err.Error()},
+				},
+			},
 			Status:     "error",
 			FinishedAt: time.Now(),
-		})
+		}, request.Platform)
 		if err != nil {
 			return plugins.Response{
 				Success: false,
@@ -84,11 +94,16 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 	}
 
 	err = executions.UpdateStep(request.Config, request.Execution.ID.String(), models.ExecutionSteps{
-		ID:         request.Step.ID,
-		Messages:   []string{`Email sent to ` + strings.Join(to, ", ")},
+		ID: request.Step.ID,
+		Messages: []models.Message{
+			{
+				Title: "Mail",
+				Lines: []string{`Email sent to ` + strings.Join(to, ", ")},
+			},
+		},
 		Status:     "success",
 		FinishedAt: time.Now(),
-	})
+	}, request.Platform)
 	if err != nil {
 		return plugins.Response{
 			Success: false,
@@ -100,19 +115,19 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 	}, nil
 }
 
-func (p *Plugin) HandleAlert(request plugins.AlertHandlerRequest) (plugins.Response, error) {
+func (p *Plugin) EndpointRequest(request plugins.EndpointRequest) (plugins.Response, error) {
 	return plugins.Response{
 		Success: false,
 	}, errors.New("not implemented")
 }
 
-func (p *Plugin) Info() (models.Plugins, error) {
-	var plugin = models.Plugins{
+func (p *Plugin) Info() (models.Plugin, error) {
+	var plugin = models.Plugin{
 		Name:    "Mail",
 		Type:    "action",
-		Version: "1.1.2",
+		Version: "1.2.0",
 		Author:  "JustNZ",
-		Actions: models.Actions{
+		Action: models.Action{
 			Name:        "Mail",
 			Description: "Send an email",
 			Plugin:      "mail",
@@ -163,7 +178,7 @@ func (p *Plugin) Info() (models.Plugins, error) {
 				},
 			},
 		},
-		Endpoints: models.AlertEndpoints{},
+		Endpoint: models.Endpoint{},
 	}
 
 	return plugin, nil
@@ -180,13 +195,13 @@ func (s *PluginRPCServer) ExecuteTask(request plugins.ExecuteTaskRequest, resp *
 	return err
 }
 
-func (s *PluginRPCServer) HandleAlert(request plugins.AlertHandlerRequest, resp *plugins.Response) error {
-	result, err := s.Impl.HandleAlert(request)
+func (s *PluginRPCServer) EndpointRequest(request plugins.EndpointRequest, resp *plugins.Response) error {
+	result, err := s.Impl.EndpointRequest(request)
 	*resp = result
 	return err
 }
 
-func (s *PluginRPCServer) Info(args interface{}, resp *models.Plugins) error {
+func (s *PluginRPCServer) Info(args interface{}, resp *models.Plugin) error {
 	result, err := s.Impl.Info()
 	*resp = result
 	return err
