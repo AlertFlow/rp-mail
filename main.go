@@ -121,11 +121,11 @@ func (p *Plugin) EndpointRequest(request plugins.EndpointRequest) (plugins.Respo
 	}, errors.New("not implemented")
 }
 
-func (p *Plugin) Info() (models.Plugin, error) {
+func (p *Plugin) Info(request plugins.InfoRequest) (models.Plugin, error) {
 	var plugin = models.Plugin{
 		Name:    "Mail",
 		Type:    "action",
-		Version: "1.2.0",
+		Version: "1.2.1",
 		Author:  "JustNZ",
 		Action: models.Action{
 			Name:        "Mail",
@@ -201,8 +201,8 @@ func (s *PluginRPCServer) EndpointRequest(request plugins.EndpointRequest, resp 
 	return err
 }
 
-func (s *PluginRPCServer) Info(args interface{}, resp *models.Plugin) error {
-	result, err := s.Impl.Info()
+func (s *PluginRPCServer) Info(request plugins.InfoRequest, resp *models.Plugin) error {
+	result, err := s.Impl.Info(request)
 	*resp = result
 	return err
 }
