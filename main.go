@@ -53,7 +53,11 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 		Messages: []models.Message{
 			{
 				Title: "Mail",
-				Lines: []string{`Authenticate on SMTP Server: ` + smtpHost + `:` + strconv.Itoa(smtpPort)},
+				Lines: []models.Line{
+					{
+						Content: `Authenticate on SMTP Server: ` + smtpHost + `:` + strconv.Itoa(smtpPort),
+					},
+				},
 			},
 		},
 		StartedAt: time.Now(),
@@ -76,7 +80,16 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 			Messages: []models.Message{
 				{
 					Title: "Mail",
-					Lines: []string{"Failed to send email", err.Error()},
+					Lines: []models.Line{
+						{
+							Content: "Failed to send email",
+							Color:   "danger",
+						},
+						{
+							Content: err.Error(),
+							Color:   "danger",
+						},
+					},
 				},
 			},
 			Status:     "error",
@@ -98,7 +111,12 @@ func (p *Plugin) ExecuteTask(request plugins.ExecuteTaskRequest) (plugins.Respon
 		Messages: []models.Message{
 			{
 				Title: "Mail",
-				Lines: []string{`Email sent to ` + strings.Join(to, ", ")},
+				Lines: []models.Line{
+					{
+						Content: `Email sent to ` + strings.Join(to, ", "),
+						Color:   "success",
+					},
+				},
 			},
 		},
 		Status:     "success",
@@ -125,7 +143,7 @@ func (p *Plugin) Info(request plugins.InfoRequest) (models.Plugin, error) {
 	var plugin = models.Plugin{
 		Name:    "Mail",
 		Type:    "action",
-		Version: "1.2.1",
+		Version: "1.2.2",
 		Author:  "JustNZ",
 		Action: models.Action{
 			Name:        "Mail",
